@@ -179,8 +179,8 @@ class CaptureFragment : Fragment() {
             val camera = cameraProvider.bindToLifecycle(
                 viewLifecycleOwner,
                 cameraSelector,
-                videoCapture,
-                //imageAnalysis,
+                //videoCapture, // These are mutually exclusive
+                imageAnalysis, // These are mutually exclusive
                 preview
             )
             val cameraControl = Camera2CameraControl.from(camera.cameraControl)
