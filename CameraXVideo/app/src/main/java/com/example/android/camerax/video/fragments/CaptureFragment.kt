@@ -31,14 +31,21 @@ package com.example.android.camerax.video.fragments
 import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.res.Configuration
+import android.hardware.camera2.CaptureRequest
 import java.text.SimpleDateFormat
 import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Log
+import android.util.Range
+import android.util.Size
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
+import androidx.camera.camera2.interop.Camera2CameraControl
+import androidx.camera.camera2.interop.Camera2Interop
+import androidx.camera.camera2.interop.CaptureRequestOptions
+import androidx.camera.core.AspectRatio
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
@@ -47,6 +54,7 @@ import com.example.android.camerax.video.R
 import com.example.android.camerax.video.databinding.FragmentCaptureBinding
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.video.*
 import androidx.concurrent.futures.await
@@ -61,6 +69,7 @@ import com.example.android.camera.utils.GenericListAdapter
 import com.example.android.camerax.video.extensions.getAspectRatio
 import com.example.android.camerax.video.extensions.getAspectRatioString
 import com.example.android.camerax.video.extensions.getNameString
+import com.example.android.camerax.video.extensions.getQualityObject
 import kotlinx.coroutines.*
 import java.util.*
 
@@ -102,6 +111,7 @@ class CaptureFragment : Fragment() {
      *   (VideoCapture can work on its own). The function should always execute on
      *   the main thread.
      */
+    @SuppressLint("UnsafeOptInUsageError", "RestrictedApi")
     private suspend fun bindCaptureUsecase() {
         val cameraProvider = ProcessCameraProvider.getInstance(requireContext()).await()
 
@@ -118,8 +128,35 @@ class CaptureFragment : Fragment() {
                 (orientation == Configuration.ORIENTATION_PORTRAIT))
         }
 
+        val builder = ImageAnalysis.Builder()
+
+//        @androidx.camera.camera2.interop.ExperimentalCamera2Interop
+//        val ext: Camera2Interop.Extender<*> = Camera2Interop.Extender(builder)
+//        // Configure auto exposure settings.
+//        ext.setCaptureRequestOption(
+//                CaptureRequest.CONTROL_AE_MODE,
+//                CaptureRequest.CONTROL_AE_MODE_OFF
+//        )
+
+//        // Todo:  When you set this target range, it stops recording on my phone.
+//        ext.setCaptureRequestOption(
+//                CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
+//                Range<Int>(30, 60)
+//        )
+
+//        ext.setCaptureRequestOption(
+//                CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, 1
+//        )
+
+        val imageAnalysis = builder
+            // enable the following line if RGBA output is needed.
+            // .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .build()
+
         val preview = Preview.Builder()
-            .setTargetAspectRatio(quality.getAspectRatio(quality))
+            //.setTargetAspectRatio(quality.getAspectRatio(quality))
+            .setTargetFrameRate(Range<Int>(30, 60))
             .build().apply {
                 setSurfaceProvider(captureViewBinding.previewView.surfaceProvider)
             }
@@ -130,16 +167,29 @@ class CaptureFragment : Fragment() {
         val recorder = Recorder.Builder()
             .setQualitySelector(qualitySelector)
             .build()
-        videoCapture = VideoCapture.withOutput(recorder)
+
+        videoCapture = VideoCapture.Builder(recorder)
+            .setTargetFrameRate(Range(60, 60))
+            .build()
+
+//        videoCapture = VideoCapture.withOutput(recorder)
 
         try {
             cameraProvider.unbindAll()
-            cameraProvider.bindToLifecycle(
+            val camera = cameraProvider.bindToLifecycle(
                 viewLifecycleOwner,
                 cameraSelector,
                 videoCapture,
+                //imageAnalysis,
                 preview
             )
+            val cameraControl = Camera2CameraControl.from(camera.cameraControl)
+            cameraControl.captureRequestOptions = CaptureRequestOptions.Builder()
+                .setCaptureRequestOption(
+                    CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE,
+                    Range<Int>(60, 60)
+                )
+                .build()
         } catch (exc: Exception) {
             // we are on main thread, let's reset the controls on the UI.
             Log.e(TAG, "Use case binding failed", exc)
